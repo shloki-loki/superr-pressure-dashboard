@@ -33,7 +33,7 @@ function rankTable(role) {
   const players = ranked(role).filter(player => !query || [player.player_name, player.country].some(value => value?.toLowerCase().includes(query)));
   const shown = state.all || query ? players : players.slice(0, 10);
   const rows = shown.map(player => `<tr><td>${rank(player)}</td><td>${playerButton(role, player)}<small>${escape(player.country || "Unknown")}</small></td><td>${decimal(player.normal, 1)}</td><td>${decimal(player.pressure, 1)}</td><td class="${player.delta >= 0 ? "positive" : "negative"}">${signed(player.delta)}</td><td class="score">${decimal(score(player))}</td></tr>`).join("");
-  return `<section class="card"><div class="card-head"><h2>${labels[role]}</h2><small>${shown.length} of ${ranked(role).length} eligible</small></div>${rows ? `<div class="scroll"><table aria-label="${labels[role]} rankings"><thead><tr><th scope="col">Rank</th><th scope="col">Player / country</th><th scope="col">Overall</th><th scope="col">Pressure</th><th scope="col">Lift</th><th scope="col">Blend</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="empty">No eligible players match your search.</p>'}</section>`;
+  return `<section class="card"><div class="card-head"><h2>${labels[role]}</h2><small>${shown.length} of ${ranked(role).length} eligible</small></div>${rows ? `<div class="scroll"><table aria-label="${labels[role]} rankings"><thead><tr><th scope="col">Rank</th><th scope="col">Player / country</th><th scope="col">Overall</th><th scope="col">Pressure</th><th scope="col">Adjusted gap</th><th scope="col">Blend</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="empty">No eligible players match your search.</p>'}</section>`;
 }
 
 function rankingTables() {
@@ -41,7 +41,7 @@ function rankingTables() {
 }
 
 function rankings() {
-  return hero("Performance under pressure", "All matches count. Recent games get up to 50% extra weight.", '<p class="coverage muted"><strong>764</strong> matches · <strong>182,713</strong> deliveries<br>Run value per 100 weighted legal balls</p>') + `
+  return hero("Performance under pressure", "All eligible matches count. Recent games get up to 50% extra weight.", '<p class="coverage muted"><strong>764</strong> matches · <strong>182,713</strong> deliveries<br>Run value per 100 weighted legal balls</p>') + `
   <div class="bar">
     <div class="controls">
       <label>Role<select id="role"><option value="both"${selected(state.role,"both")}>Both roles</option>${Object.entries(labels).map(([role,label]) => `<option value="${role}"${selected(state.role,role)}>${label}</option>`).join("")}</select></label>
@@ -50,7 +50,7 @@ function rankings() {
     </div>${slider()}
   </div>
   <div id="tables" class="grid"></div>
-  <p class="footnote">Country / team uses international representation or official nationality where sourced. Overall and pressure use all deliveries with different weights. Lift equals pressure minus overall.</p>`;
+  <p class="footnote">Country / team uses international representation or official nationality where sourced. Overall and pressure use all deliveries with different weights. Adjusted gap equals the two displayed scores minus each other and includes different sample-floor adjustments. See player details for lift before that adjustment.</p>`;
 }
 
 function metric(label, value) {
@@ -59,9 +59,9 @@ function metric(label, value) {
 
 function profile(player) {
   return `<div class="metrics">${[
-    ["Blend", decimal(score(player))], ["Overall", decimal(player.normal)], ["Pressure", decimal(player.pressure)], ["Reweighting lift", signed(player.delta)], ["Total pressure contribution", signed(player.pressure_value)]
+    ["Blend", decimal(score(player))], ["Overall", decimal(player.normal)], ["Pressure", decimal(player.pressure)], ["Adjusted gap", signed(player.delta)], ["Raw pressure lift", signed(player.pressure_raw - player.normal_raw)], ["Total pressure contribution", signed(player.pressure_value)]
   ].map(pair => metric(...pair)).join("")}</div>
-  <p><strong>${count(player.normal_balls)}</strong> legal balls across <strong>${count(player.normal_matches)}</strong> matches. After weighting for recency and match stage, that counts as ${decimal(player.normal_weighted_balls, 1)} balls overall and ${decimal(player.pressure_weighted_balls, 1)} for pressure.</p>
+  <p><strong>${count(player.normal_balls)}</strong> legal balls across <strong>${count(player.normal_matches)}</strong> matches. The overall weights sum to ${decimal(player.normal_weighted_balls, 1)} and pressure weights to ${decimal(player.pressure_weighted_balls, 1)} across those legal balls. These are influence units, not additional observed balls.</p>
   <p>Total pressure contribution sums adjusted run value across all pressure-weighted deliveries. The leaderboard blends the two rates shown above. Denominators use actual weighted exposure or the role minimum (215 batting, 299 bowling), whichever is higher.</p>
   <p><strong>Match-removal rank range at 70/30</strong><br>${count(player.removal_min_rank)}–${count(player.removal_max_rank)} · largest blend change ${decimal(player.removal_max_abs_score_change)}${player.removal_ineligible ? ` · Ineligible in ${count(player.removal_ineligible)} removals` : ""}</p>
   <p class="footnote">Fixed-model sensitivity. Each match is removed from player aggregates in turn, with the fitted models held fixed.</p>`;
@@ -133,14 +133,14 @@ function method() {
     ["Estimate the possible outcomes", "Before each ball, estimate the chances of possible runs, legality and wicket outcomes from historical states. Pool nearby and broader samples when exact examples are sparse."],
     ["Calculate pressure before the delivery", "For a chase, estimate win credit from the runs needed, legal balls and wickets left after each possible outcome. For a setting innings, project the range of finishes and their chances of being defended. Pressure is the probability-weighted absolute distance from central win credit."],
     ["Grade execution and build the rankings", "Grade runs and wickets against other matches. The benchmark uses innings, phase, competition, batting role, bowling style and venue, then adjusts for balls left, wickets left and the required scoring rate in a chase. Sparse groups mostly inherit the broader estimate. Both ratings use every delivery. Overall weights are 1.00 for regular matches, 1.25 for other knockouts and 1.50 for finals. Both ratings apply a recent-match multiplier: 1.50 for the latest date, 1.25 at one year, and 1.00 at two years and older. Pressure form then multiplies that weight by (1 + ball pressure ÷ mean pressure for the innings) ÷ 2."],
-    ["Scale and blend the ratings", "For each rating, divide weighted run value by the greater of actual weighted legal balls and the role floor, then multiply by 100. The floor is the rounded-up mean legal-ball count across all players with legal-ball exposure: 215 for batters and 299 for bowlers. Rank players with at least 100 legal balls across five matches. The default blend is 70% pressure and 30% overall. Lift describes the change from reweighting deliveries."]
+    ["Scale and blend the ratings", "For each rating, divide weighted run value by the greater of actual weighted legal balls and the role floor, then multiply by 100. The floor is the rounded-up mean legal-ball count across all players with legal-ball exposure: 215 for batters and 299 for bowlers. Rank players with at least 100 legal balls across five matches. The default blend is 70% pressure and 30% overall. The adjusted gap also reflects different sample-floor adjustments; raw lift in player details isolates the change from reweighting."]
   ];
   return hero("Method & coverage", "How historical deliveries become player scores, and what the source audit included.") +
     `<div class="grid"><section class="card card-body stack"><h2>From delivery to rank</h2>${steps.map(([title,body],i) => `<article><h3><span class="number">${i + 1}.</span> ${title}</h3><p>${body}</p></article>`).join("")}</section>
     <div class="stack"><section class="card card-body"><h2>Coverage audit</h2><div class="metrics">${metric("Source matches",count(audit.source_matches))}${metric("Reconciled matches",count(audit.included_matches))}${metric("Excluded matches",count(audit.excluded_matches))}${metric("Source deliveries",count(audit.source_deliveries))}${metric("Reconciled deliveries",count(audit.included_deliveries))}${metric("Excluded deliveries",count(audit.excluded_deliveries))}</div>
     <p>The reconciled pool excludes revised games, super overs and other failed checks. The IPL and T20I ranking sample contains <strong>${count(audit.eligible_matches ?? 764)}</strong> matches and <strong>${count(audit.eligible_deliveries ?? 182713)}</strong> deliveries after removing ${count(audit.out_of_scope_matches)} emerging-team matches.</p>
     ${reasons.length ? `<h3>Recorded exclusion reasons</h3><p class="footnote">Reasons can overlap. Counts may sum to more than the excluded total.</p><ul>${reasons.map(([label,value]) => `<li>${escape(label.replaceAll("_"," "))} · ${escape(typeof value === "object" ? JSON.stringify(value) : value)}</li>`).join("")}</ul>` : ""}</section>
-    <section class="card card-body"><h2>Model checks</h2><p>Held-out Brier loss was 0.223 for setting and 0.124 for chasing. A flat 50% baseline scores 0.250. Lower loss is better.</p><p>The separate past-only check trains on 615 matches and predicts 149 later matches from 5 November 2025.</p><p>Match-removal sensitivity holds the models fixed and recalculates player aggregates and ranks after each match is removed. The resulting range measures the effect of removing individual matches.</p></section><section class="card card-body"><h2>Review limitations</h2><p>The grade measures runs and wickets above expectation. It can credit a boundary even when it falls short of the target. Opposition strength is only partially accounted for. Bucketed state estimates and finish projections can shift between nearby situations. Monotonicity across states remains unverified.</p><p>The 70/30 blend, dataset-mean sample floors, two-year recency bonus and stage weights are modelling assumptions. Lift measures how the score changes when deliveries are reweighted. It does not estimate a causal clutch effect.</p><p><a href="review-summary.md">Read the earlier model review</a></p></section></div></div>`;
+    <section class="card card-body"><h2>Model checks</h2><p>Held-out Brier loss was 0.223 for setting and 0.124 for chasing. A flat 50% baseline scores 0.250. Lower loss is better.</p><p>The separate past-only check trains on 615 matches and predicts 149 later matches from 5 November 2025.</p><p>Match-removal sensitivity holds the models fixed and recalculates player aggregates and ranks after each match is removed. The resulting range measures the effect of removing individual matches.</p></section><section class="card card-body"><h2>Review limitations</h2><p>The grade measures runs and wickets above expectation. It can credit a boundary even when it falls short of the target. Opposition strength is only partially accounted for. Bucketed state estimates and finish projections can shift between nearby situations. The November 16 audit confirmed that some forecasts improve when a wicket or ball is lost. A first-innings repair passed ordering tests in isolation; these displayed scores still use the previous forecasts.</p><p>The 70/30 blend, dataset-mean sample floors, two-year recency bonus and stage weights are modelling assumptions. The displayed adjusted gap can have the opposite sign from raw lift because the sample floors differ. Neither is an estimate of a causal clutch effect.</p><p><a href="audit-report.html">Read the full Astra audit and experiments</a></p></section></div></div>`;
 }
 
 function render() {
@@ -151,7 +151,7 @@ function render() {
     if (link.hash === "#" + page) link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");
   });
-  dashboard.innerHTML = views[page]();
+  dashboard.innerHTML = `<aside class="card card-body" role="note"><strong>Audit review · rankings awaiting correction</strong><p>The audit found pressure-forecast errors, a misleading adjusted lift, and omitted batter credit on some extras. Current rankings are retained for comparison; experimental scores have not replaced them. <a href="audit-report.html">Read findings and tested changes →</a></p></aside>` + views[page]();
   if (page === "rankings") rankingTables();
   if (page === "compare") compareCards();
 }
