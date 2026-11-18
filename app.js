@@ -17,7 +17,8 @@ function table(role) {
 function rankings() {
   return `<div class="hero"><div><p class="eyebrow">IPL &amp; T20I · 2022–2026</p><h1>Most reliable under pressure</h1></div><p class="coverage muted"><strong>${count(data.matches)}</strong> matches · <strong>${count(data.deliveries)}</strong> deliveries</p></div>
   <div class="bar"><div class="controls">
-    <label>Rows to show<select id="rows">${["10", "25", "50", "100", "all"].map(v => `<option value="${v}"${state.rows === v ? " selected" : ""}>${v === "all" ? "All players" : `Top ${v}`}</option>`).join("")}</select></label>
+    <label>Players to show<input id="count" type="number" min="1" max="${Math.max(data.roles.batters.length, data.roles.bowlers.length)}" step="1" inputmode="numeric" value="${state.rows === "all" ? "" : escape(state.rows)}" placeholder="All"></label>
+    <div class="presets" role="group" aria-label="Quick picks">${["10", "25", "50", "100", "all"].map(v => `<button type="button" data-rows="${v}"${state.rows === v ? ' aria-pressed="true"' : ""}>${v === "all" ? "All" : v}</button>`).join("")}</div>
     <label>Find a player<input id="search" type="search" placeholder="Player or country" value="${escape(state.query)}"></label>
   </div></div>
   <div class="grid" id="tables">${table("batters")}${table("bowlers")}</div>`;
@@ -41,7 +42,19 @@ function render() {
   document.querySelectorAll(".nav a").forEach(a => a.toggleAttribute("aria-current", a.getAttribute("href") === `#${page}`));
   main.innerHTML = page === "method" ? method() : rankings();
   if (page === "rankings") {
-    document.querySelector("#rows").addEventListener("change", e => { state.rows = e.target.value; render(); });
+    const tables = () => { document.querySelector("#tables").innerHTML = table("batters") + table("bowlers"); };
+    const count = document.querySelector("#count");
+    count.addEventListener("input", e => {
+      const n = parseInt(e.target.value, 10);
+      state.rows = Number.isFinite(n) && n > 0 ? String(n) : "all";
+      document.querySelectorAll("[data-rows]").forEach(b => b.toggleAttribute("aria-pressed", b.dataset.rows === state.rows));
+      tables();
+    });
+    document.querySelectorAll("[data-rows]").forEach(b => b.addEventListener("click", () => {
+      state.rows = b.dataset.rows; count.value = state.rows === "all" ? "" : state.rows;
+      document.querySelectorAll("[data-rows]").forEach(x => x.toggleAttribute("aria-pressed", x === b));
+      tables();
+    }));
     const search = document.querySelector("#search");
     search.addEventListener("input", e => {
       state.query = e.target.value;

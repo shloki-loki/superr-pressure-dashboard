@@ -47,3 +47,9 @@ tbody tr:hover{background:#f9fbf8}
 .number{font-family:var(--serif);font-size:30px;color:var(--accent);line-height:1;min-width:24px}
 @media(max-width:1000px){.grid{grid-template-columns:1fr}}
 @media(max-width:640px){.wrap{width:calc(100% - 32px)}.brand{font-size:16px}.edition{font-size:11px}.hero{flex-direction:column;align-items:start;gap:8px}.coverage{text-align:left}main{padding-block:24px 36px}h2{font-size:24px}.controls,.controls label,.controls input,.controls select{width:100%}}
+.controls input[type=number]{width:120px}
+.presets{display:flex;gap:6px;flex-wrap:wrap}
+.presets button{font:inherit;font-size:13px;color:var(--ink);background:#fff;border:1px solid #ccd9d1;border-radius:7px;min-height:36px;padding:6px 12px;cursor:pointer}
+.presets button:hover{background:var(--mint)}
+.presets button[aria-pressed]{background:var(--accent);border-color:var(--accent);color:#fff}
+@media(max-width:640px){.controls input[type=number]{width:100%}}
