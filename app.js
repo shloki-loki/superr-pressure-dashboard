@@ -1,211 +1,54 @@
-"use strict";
-
-const dashboard = document.querySelector("#dashboard");
-const dialog = document.querySelector("#player");
-const detail = document.querySelector("#player-detail");
-const labels = { batters: "Batters", bowlers: "Bowlers" };
-const state = { role: "both", query: "", all: false, weight: 70, compareRole: "batters", compare: [], trace: 0 };
+const state = { rows: "10", query: "" };
 let data;
-const escape = value => String(value ?? "").replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
-const decimal = (value, digits = 2) => Number.isFinite(value) ? value.toFixed(digits) : "—";
-const count = value => Number.isFinite(value) ? value.toLocaleString("en-US") : "—";
-const pct = value => value == null ? "—" : decimal(value * 100, 4);
-const signed = value => (value > 0 ? "+" : "") + decimal(value);
-const rank = player => player["rank_" + state.weight];
-const score = player => player["score_" + state.weight];
-const ranked = role => data.roles[role].filter(player => player.eligible).sort((a, b) => rank(a) - rank(b));
-const selected = (actual, expected) => actual === expected ? " selected" : "";
+const main = document.querySelector("#dashboard");
+const labels = { batters: "Batters", bowlers: "Bowlers" };
+const escape = value => String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const count = value => Number(value).toLocaleString("en-US");
 
-function hero(title, copy, extra = "") {
-  return `<section class="hero"><div><p class="eyebrow">IPL &amp; T20I · Retrospective analysis</p><h1>${title}</h1><p class="muted">${copy}</p></div>${extra}</section>`;
-}
-
-function slider() {
-  return `<div class="weight"><label for="weight">Rank blend <output id="blend">Pressure ${state.weight}% · Overall ${100 - state.weight}%</output></label><input aria-label="Pressure weight" aria-describedby="blend" id="weight" type="range" min="60" max="80" step="10" value="${state.weight}"></div>`;
-}
-
-function playerButton(role, player) {
-  return `<button class="player-link" data-player="${escape(player.player_id)}" data-role="${role}">${escape(player.player_name)}</button>`;
-}
-
-function rankTable(role) {
-  const query = state.query.trim().toLowerCase();
-  const players = ranked(role).filter(player => !query || [player.player_name, player.country].some(value => value?.toLowerCase().includes(query)));
-  const shown = state.all || query ? players : players.slice(0, 10);
-  const rows = shown.map(player => `<tr><td>${rank(player)}</td><td>${playerButton(role, player)}<small>${escape(player.country || "Unknown")}</small></td><td>${decimal(player.normal, 1)}</td><td>${decimal(player.pressure, 1)}</td><td class="${player.delta >= 0 ? "positive" : "negative"}">${signed(player.delta)}</td><td class="score">${decimal(score(player))}</td></tr>`).join("");
-  return `<section class="card"><div class="card-head"><h2>${labels[role]}</h2><small>${shown.length} of ${ranked(role).length} eligible</small></div>${rows ? `<div class="scroll"><table aria-label="${labels[role]} rankings"><thead><tr><th scope="col">Rank</th><th scope="col">Player / country</th><th scope="col">Overall</th><th scope="col">Pressure</th><th scope="col">Adjusted gap</th><th scope="col">Blend</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="empty">No eligible players match your search.</p>'}</section>`;
-}
-
-function rankingTables() {
-  document.querySelector("#tables").innerHTML = Object.keys(labels).filter(role => state.role === "both" || state.role === role).map(rankTable).join("");
+function table(role) {
+  const all = data.roles[role];
+  const q = state.query.trim().toLowerCase();
+  const filtered = all.filter(p => !q || p.name.toLowerCase().includes(q) || p.country.toLowerCase().includes(q));
+  const shown = state.rows === "all" ? filtered : filtered.slice(0, Number(state.rows));
+  const body = shown.map(p => `<tr><td>${p.rank}</td><td><strong>${escape(p.name)}</strong><small>${escape(p.country)}</small></td><td>${p.matches}</td><td>${count(p.balls)}</td><td class="score">${p.rating.toFixed(2)}</td></tr>`).join("");
+  return `<section class="card"><div class="card-head"><h2>${labels[role]}</h2><small>${shown.length} of ${all.length} ranked</small></div>${body ? `<div class="scroll"><table aria-label="${labels[role]} rankings"><thead><tr><th scope="col">Rank</th><th scope="col">Player</th><th scope="col">Matches</th><th scope="col">Balls</th><th scope="col">Pressure rating</th></tr></thead><tbody>${body}</tbody></table></div>` : '<p class="empty">No player matches your search.</p>'}</section>`;
 }
 
 function rankings() {
-  return hero("Performance under pressure", "All eligible matches count. Recent games get up to 50% extra weight.", '<p class="coverage muted"><strong>764</strong> matches · <strong>182,713</strong> deliveries<br>Run value per 100 weighted legal balls</p>') + `
-  <div class="bar">
-    <div class="controls">
-      <label>Role<select id="role"><option value="both"${selected(state.role,"both")}>Both roles</option>${Object.entries(labels).map(([role,label]) => `<option value="${role}"${selected(state.role,role)}>${label}</option>`).join("")}</select></label>
-      <label>Find a player<input id="search" type="search" placeholder="Player or country" value="${escape(state.query)}"></label>
-      <label>Show<select id="limit"><option value="top"${selected(state.all,false)}>Top 10</option><option value="all"${selected(state.all,true)}>All eligible</option></select></label>
-    </div>${slider()}
-  </div>
-  <div id="tables" class="grid"></div>
-  <p class="footnote">Country / team uses international representation or official nationality where sourced. Overall and pressure use all deliveries with different weights. Adjusted gap equals the two displayed scores minus each other and includes different sample-floor adjustments. See player details for lift before that adjustment.</p>`;
-}
-
-function metric(label, value) {
-  return `<div class="metric"><span>${label}</span><strong>${value}</strong></div>`;
-}
-
-function profile(player) {
-  return `<div class="metrics">${[
-    ["Blend", decimal(score(player))], ["Overall", decimal(player.normal)], ["Pressure", decimal(player.pressure)], ["Adjusted gap", signed(player.delta)], ["Raw pressure lift", signed(player.pressure_raw - player.normal_raw)], ["Total pressure contribution", signed(player.pressure_value)]
-  ].map(pair => metric(...pair)).join("")}</div>
-  <p><strong>${count(player.normal_balls)}</strong> legal balls across <strong>${count(player.normal_matches)}</strong> matches. The overall weights sum to ${decimal(player.normal_weighted_balls, 1)} and pressure weights to ${decimal(player.pressure_weighted_balls, 1)} across those legal balls. These are influence units, not additional observed balls.</p>
-  <p>Total pressure contribution sums adjusted run value across all pressure-weighted deliveries. The leaderboard blends the two rates shown above. Denominators use actual weighted exposure or the role minimum (215 batting, 299 bowling), whichever is higher.</p>
-  <p><strong>Match-removal rank range at 70/30</strong><br>${count(player.removal_min_rank)}–${count(player.removal_max_rank)} · largest blend change ${decimal(player.removal_max_abs_score_change)}${player.removal_ineligible ? ` · Ineligible in ${count(player.removal_ineligible)} removals` : ""}</p>
-  <p class="footnote">Fixed-model sensitivity. Each match is removed from player aggregates in turn, with the fitted models held fixed.</p>`;
-}
-
-function openPlayer(role, id) {
-  const player = data.roles[role].find(row => String(row.player_id) === id);
-  if (!player) return;
-  const examples = data.evidence?.[role]?.[id] ?? [];
-  detail.innerHTML = `<div class="detail-head"><div><p class="eyebrow">${labels[role]} · Rank ${rank(player)}</p><h2 id="player-title">${escape(player.player_name)}</h2><p class="muted">Country / team · ${escape(player.country || "Unknown")}${player.country_source?.startsWith("https://") ? ` · <a href="${escape(player.country_source)}">Official IPL source</a>` : ""}</p></div><form method="dialog"><button aria-label="Close player details">Close</button></form></div>
-  ${profile(player)}
-  <h3>Delivery examples</h3>
-  ${examples.length ? `<p class="footnote">Selected high-pressure deliveries. Value is execution relative to expectation, in runs.</p><div class="scroll"><table><thead><tr><th>Match</th><th>Delivery</th><th>Pre-ball score</th><th>Balls left</th><th>Pressure (pp)</th><th>Value</th></tr></thead><tbody>${examples.map(ball => `<tr><td>${escape(ball.match_id)}</td><td>Inn. ${escape(ball.innings)} · Event ${escape(ball.innings_ball_num)}</td><td>${ball.score_before}/${ball.wickets_before}</td><td>${ball.balls_remaining}</td><td>${pct(ball.pressure)}</td><td>${signed(ball.value)}</td></tr>`).join("")}</tbody></table></div>` : '<p class="muted">No delivery examples are available for this player.</p>'}`;
-  dialog.setAttribute("aria-labelledby", "player-title");
-  dialog.showModal();
-}
-
-function compareCards() {
-  const players = ranked(state.compareRole);
-  const pair = state.compare.map(id => players.find(player => String(player.player_id) === id));
-  document.querySelector("#pair").innerHTML = pair.map(player => `<section class="card card-body"><p class="eyebrow">Rank ${rank(player)}</p><h2>${playerButton(state.compareRole, player)}</h2><p class="muted">${escape(player.country || "Country / team unknown")}</p>${profile(player)}</section>`).join("");
-  const [a,b] = pair;
-  const gap = score(a) - score(b);
-  const summary = gap === 0 ? "The players have the same blend score." : `${escape((gap > 0 ? a : b).player_name)} leads by <strong>${decimal(Math.abs(gap))}</strong> run value per 100 weighted legal balls at this blend.`;
-  document.querySelector("#gap").innerHTML = summary;
-}
-
-function compare() {
-  const players = ranked(state.compareRole);
-  if (!state.compare.length) state.compare = players.slice(0, 2).map(player => String(player.player_id));
-  const options = (id) => [...players].sort((a,b) => a.player_name.localeCompare(b.player_name)).map(player => `<option value="${escape(player.player_id)}"${selected(id,String(player.player_id))}>${escape(player.player_name)}</option>`).join("");
-  return hero("Compare players", "See how overall form and pressure-weighted form contribute to the ranking.") + `<div class="bar"><div class="controls"><label>Role<select id="compare-role">${Object.entries(labels).map(([role,label]) => `<option value="${role}"${selected(state.compareRole,role)}>${label}</option>`).join("")}</select></label>
-  ${state.compare.map((id,index) => `<label>Player ${index + 1}<select data-side="${index}">${options(id)}</select></label>`).join("")}</div>${slider()}</div>
-  <p id="gap" class="formula"></p><div class="grid" id="pair"></div>`;
-}
-
-function branchName(branch) {
-  const runs = branch.team_runs === 1 ? "1 run" : `${branch.team_runs} runs`;
-  return [runs, branch.legal ? "legal" : "illegal", branch.wicket ? "wicket" : ""].filter(Boolean).join(" · ");
-}
-
-function ballLab() {
-  const traces = data.traces ?? [];
-  const intro = hero("Ball lab", "Work through real pre-delivery estimates and the outcomes that contribute to pressure.");
-  if (!traces.length) return intro + '<p class="empty">Delivery calculations are unavailable in this data release.</p>';
-  const trace = traces[state.trace];
-  const ball = trace.state ?? {};
-  const match = trace.match ?? {};
-  return intro + `<div class="bar"><div class="controls"><label>Delivery<select id="trace">${traces.map((item, i) => `<option value="${i}"${selected(state.trace,i)}>Match ${escape(item.match_id)} · Innings ${item.innings} · Event ${item.innings_ball_num}</option>`).join("")}</select></label></div></div>
-    <section class="card ball-card">
-    <div class="card-body"><p class="eyebrow">${[ball.comp_name, match.match_date].filter(Boolean).map(escape).join(" · ")}</p><h2>${ball.bowler_name && ball.striker_name ? `${escape(ball.bowler_name)} to ${escape(ball.striker_name)}` : `Match ${escape(trace.match_id)}`}</h2>
-    <p>${trace.innings === 1 ? "Setting a target" : "Chasing"} · ${ball.score_before ?? "—"}/${ball.wickets_before ?? "—"} before the ball · ${ball.balls_remaining ?? "—"} legal balls left${ball.runs_needed == null ? "" : ` · ${ball.runs_needed} runs needed`}</p>
-    <div class="metrics">${metric("Central win credit (%)",pct(trace.win_estimate))}${metric("Pressure (pp)",pct(trace.pressure))}${metric("Exact-state observations",count(trace.exact_state_events))}</div>
-    <p><strong>Observed outcome</strong> · ${ball.total_runs ?? "—"} team runs, ${ball.is_legal ? "legal delivery" : "illegal delivery"}, ${String(ball.is_wicket).toLowerCase() === "true" ? "wicket" : "no wicket"}. Execution value was ${signed(ball.bat_value)} for the batter and ${signed(ball.bowl_value)} for the bowler.</p>
-    <p>Each row multiplies outcome probability by the absolute gap between the next win credit and the central estimate. Adding the contributions gives delivery pressure.</p></div>
-    <div class="scroll"><table><thead><tr><th>Outcome</th><th>Probability (%)</th><th>Next win credit (%)</th><th>Gap (pp)</th><th>Contribution (pp)</th></tr></thead><tbody>
-    ${trace.outcomes.map(branch => `<tr><td>${branchName(branch)}</td><td>${pct(branch.probability)}</td><td>${pct(branch.next_win_credit)}</td><td>${pct(Math.abs(branch.next_win_credit - trace.win_estimate))}</td><td class="score">${pct(branch.pressure_contribution)}</td></tr>`).join("")}
-    <tr><th scope="row">Total</th><td>${pct(trace.outcomes.reduce((sum,branch) => sum + branch.probability,0))}</td><td></td><td></td><td class="score">${pct(trace.outcomes.reduce((sum,branch) => sum + branch.pressure_contribution,0))}</td></tr>
-    </tbody></table></div>
-    <div class="card-body"><p class="footnote">Win credit scores a win as 100%, a tie as 50%, and a loss as 0%. Table values are rounded for display.</p><p class="footnote">Pooling samples · ${count(trace.nearby_state_events)} nearby-state events and ${count(trace.phase_events)} phase events.</p></div></section>`;
+  return `<div class="hero"><div><p class="eyebrow">IPL &amp; T20I · 2022–2026</p><h1>Most reliable under pressure</h1></div><p class="coverage muted"><strong>${count(data.matches)}</strong> matches · <strong>${count(data.deliveries)}</strong> deliveries</p></div>
+  <div class="bar"><div class="controls">
+    <label>Rows to show<select id="rows">${["10", "25", "50", "100", "all"].map(v => `<option value="${v}"${state.rows === v ? " selected" : ""}>${v === "all" ? "All players" : `Top ${v}`}</option>`).join("")}</select></label>
+    <label>Find a player<input id="search" type="search" placeholder="Player or country" value="${escape(state.query)}"></label>
+  </div></div>
+  <div class="grid" id="tables">${table("batters")}${table("bowlers")}</div>`;
 }
 
 function method() {
-  const audit = data.audit ?? {};
-  const exclusions = audit.exclusion_counts_overlap;
-  const reasons = exclusions && !Array.isArray(exclusions) && typeof exclusions === "object" ? Object.entries(exclusions) : [];
-  const steps = [
-    ["Prepare the match history", "Use reconciled, regulation IPL and T20I deliveries. Fit five groups of models so every match is assessed using other matches. The retrospective fit can use later matches when assessing earlier ones."],
-    ["Estimate the possible outcomes", "Before each ball, estimate the chances of possible runs, legality and wicket outcomes from historical states. Pool nearby and broader samples when exact examples are sparse."],
-    ["Calculate pressure before the delivery", "For a chase, estimate win credit from the runs needed, legal balls and wickets left after each possible outcome. For a setting innings, project the range of finishes and their chances of being defended. Pressure is the probability-weighted absolute distance from central win credit."],
-    ["Grade execution and build the rankings", "Grade runs and wickets against other matches. The benchmark uses innings, phase, competition, batting role, bowling style and venue, then adjusts for balls left, wickets left and the required scoring rate in a chase. Sparse groups mostly inherit the broader estimate. Both ratings use every delivery. Overall weights are 1.00 for regular matches, 1.25 for other knockouts and 1.50 for finals. Both ratings apply a recent-match multiplier: 1.50 for the latest date, 1.25 at one year, and 1.00 at two years and older. Pressure form then multiplies that weight by (1 + ball pressure ÷ mean pressure for the innings) ÷ 2."],
-    ["Scale and blend the ratings", "For each rating, divide weighted run value by the greater of actual weighted legal balls and the role floor, then multiply by 100. The floor is the rounded-up mean legal-ball count across all players with legal-ball exposure: 215 for batters and 299 for bowlers. Rank players with at least 100 legal balls across five matches. The default blend is 70% pressure and 30% overall. The adjusted gap also reflects different sample-floor adjustments; raw lift in player details isolates the change from reweighting."]
-  ];
-  return hero("Method & coverage", "How historical deliveries become player scores, and what the source audit included.") +
-    `<div class="grid"><section class="card card-body stack"><h2>From delivery to rank</h2>${steps.map(([title,body],i) => `<article><h3><span class="number">${i + 1}.</span> ${title}</h3><p>${body}</p></article>`).join("")}</section>
-    <div class="stack"><section class="card card-body"><h2>Coverage audit</h2><div class="metrics">${metric("Source matches",count(audit.source_matches))}${metric("Reconciled matches",count(audit.included_matches))}${metric("Excluded matches",count(audit.excluded_matches))}${metric("Source deliveries",count(audit.source_deliveries))}${metric("Reconciled deliveries",count(audit.included_deliveries))}${metric("Excluded deliveries",count(audit.excluded_deliveries))}</div>
-    <p>The reconciled pool excludes revised games, super overs and other failed checks. The IPL and T20I ranking sample contains <strong>${count(audit.eligible_matches ?? 764)}</strong> matches and <strong>${count(audit.eligible_deliveries ?? 182713)}</strong> deliveries after removing ${count(audit.out_of_scope_matches)} emerging-team matches.</p>
-    ${reasons.length ? `<h3>Recorded exclusion reasons</h3><p class="footnote">Reasons can overlap. Counts may sum to more than the excluded total.</p><ul>${reasons.map(([label,value]) => `<li>${escape(label.replaceAll("_"," "))} · ${escape(typeof value === "object" ? JSON.stringify(value) : value)}</li>`).join("")}</ul>` : ""}</section>
-    <section class="card card-body"><h2>Model checks</h2><p>Held-out Brier loss was 0.223 for setting and 0.124 for chasing. A flat 50% baseline scores 0.250. Lower loss is better.</p><p>The separate past-only check trains on 615 matches and predicts 149 later matches from 5 November 2025.</p><p>Match-removal sensitivity holds the models fixed and recalculates player aggregates and ranks after each match is removed. The resulting range measures the effect of removing individual matches.</p></section><section class="card card-body"><h2>Review limitations</h2><p>The grade measures runs and wickets above expectation. It can credit a boundary even when it falls short of the target. Opposition strength is only partially accounted for. Bucketed state estimates and finish projections can shift between nearby situations. The November 16 audit confirmed that some forecasts improve when a wicket or ball is lost. A first-innings repair passed ordering tests in isolation; these displayed scores still use the previous forecasts.</p><p>The 70/30 blend, dataset-mean sample floors, two-year recency bonus and stage weights are modelling assumptions. The displayed adjusted gap can have the opposite sign from raw lift because the sample floors differ. Neither is an estimate of a causal clutch effect.</p><p><a href="audit-report.html">Read the full Astra audit and experiments</a></p></section></div></div>`;
+  const step = (n, title, text) => `<section class="card card-body step"><span class="number">${n}</span><div><h3>${title}</h3><p>${text}</p></div></section>`;
+  return `<div class="hero"><div><p class="eyebrow">How the rating works</p><h1>Method</h1></div></div>
+  <div class="stack narrow">
+  ${step(1, "Measure the pressure on every ball", "Before each delivery we estimate the win probability after every possible outcome (dot, single, boundary, wicket, wide…). Pressure is how much the match result can swing on that ball. A tight chase in the 19th over scores high; a dead rubber scores low. Win probabilities come from the supplied matches only. We do not use the DLS table, and rain-revised matches are excluded.")}
+  ${step(2, "Grade what the player actually did", "Each ball is compared with what a typical player achieves in the same situation: same innings, phase, balls and wickets left, required rate, batting position, bowling type and venue. Runs above expectation and wickets are credited. A good innings in a losing cause still earns full credit.")}
+  ${step(3, "Count the big matches more", `Pressure compounds in big games. Each match carries a multiplier: <strong>IPL</strong> league ×1, playoff ×2, final ×3. <strong>Playing for the country</strong>: bilateral series ×1.25, multi-team tournament group ×1.5, tournament knockout ×2.5, tournament final ×4.`)}
+  ${step(4, "Combine into one rating", "The pressure rating is 70% performance weighted by pressure and 30% normal performance, in runs above expectation per 100 balls. Recent matches get up to 50% extra weight. Players need 100 balls across 5 matches. Smaller samples are scaled towards average so a few lucky games cannot top the list.")}
+  ${step(5, "Check it holds up", "Losing a wicket or a ball never improves the batting side's forecast (zero violations across all 182,713 deliveries). Wides never earn bowlers credit. The top 10s were re-checked by resampling matches 300 times and by changing the 70/30 blend to 60/40 and 80/20.")}
+  </div>`;
 }
 
 function render() {
-  const views = { rankings, compare, "ball-lab": ballLab, method };
-  const hash = location.hash.slice(1);
-  const page = Object.hasOwn(views, hash) ? hash : "rankings";
-  document.querySelectorAll(".nav a").forEach(link => {
-    if (link.hash === "#" + page) link.setAttribute("aria-current", "page");
-    else link.removeAttribute("aria-current");
-  });
-  dashboard.innerHTML = `<aside class="card card-body" role="note"><strong>Round 1 submission · independent robustness audit</strong><p>These are the submitted rankings. An independent audit tested model refinements one at a time. A first-innings forecast repair kept both top-10 memberships unchanged. Raw pressure lift is shown in player details alongside the sample-adjusted gap. <a href="audit-report.html">Read the audit and tested changes →</a></p></aside>` + views[page]();
-  if (page === "rankings") rankingTables();
-  if (page === "compare") compareCards();
+  const page = location.hash === "#method" ? "method" : "rankings";
+  document.querySelectorAll(".nav a").forEach(a => a.toggleAttribute("aria-current", a.getAttribute("href") === `#${page}`));
+  main.innerHTML = page === "method" ? method() : rankings();
+  if (page === "rankings") {
+    document.querySelector("#rows").addEventListener("change", e => { state.rows = e.target.value; render(); });
+    const search = document.querySelector("#search");
+    search.addEventListener("input", e => {
+      state.query = e.target.value;
+      document.querySelector("#tables").innerHTML = table("batters") + table("bowlers");
+    });
+  }
 }
 
-dashboard.addEventListener("click", event => {
-  const button = event.target.closest("[data-player]");
-  if (button) openPlayer(button.dataset.role, button.dataset.player);
-});
-dashboard.addEventListener("input", event => {
-  if (event.target.id === "search") {
-    state.query = event.target.value;
-    rankingTables();
-  }
-  if (event.target.id === "weight") {
-    state.weight = Number(event.target.value);
-    document.querySelector("#blend").textContent = `Pressure ${state.weight}% · Overall ${100 - state.weight}%`;
-    if (document.querySelector("#tables")) rankingTables();
-    else compareCards();
-  }
-});
-dashboard.addEventListener("change", event => {
-  const { id, value, dataset } = event.target;
-  if (id === "role") state.role = value;
-  if (id === "limit") state.all = value === "all";
-  if (id === "role" || id === "limit") rankingTables();
-  if (id === "compare-role") {
-    state.compareRole = value;
-    state.compare = [];
-    render();
-    document.querySelector("#compare-role").focus();
-  }
-  if (dataset.side != null) {
-    state.compare[Number(dataset.side)] = value;
-    compareCards();
-  }
-  if (id === "trace") {
-    state.trace = Number(value);
-    render();
-    document.querySelector("#trace").focus();
-  }
-});
-window.addEventListener("hashchange", () => { if (data) render(); });
-
-fetch("./data.json")
-  .then(response => {
-    if (!response.ok) throw new Error("Data request failed");
-    return response.json();
-  })
-  .then(payload => {
-    data = payload;
-    render();
-  })
-  .catch(error => {
-    console.error(error);
-    dashboard.innerHTML = '<h1>Analysis unavailable</h1><p>The match analysis could not be loaded. Reload this page to try again.</p><button id="reload">Reload analysis</button>';
-    document.querySelector("#reload").addEventListener("click", () => location.reload());
-  });
+addEventListener("hashchange", render);
+fetch("data.json").then(r => r.json()).then(json => { data = json; render(); })
+  .catch(() => { main.innerHTML = '<p class="empty">Could not load the rankings.</p>'; });
