@@ -151,7 +151,7 @@ function render() {
     if (link.hash === "#" + page) link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");
   });
-  dashboard.innerHTML = `<aside class="card card-body" role="note"><strong>Audit review · rankings awaiting correction</strong><p>The audit found pressure-forecast errors, a misleading adjusted lift, and omitted batter credit on some extras. Current rankings are retained for comparison; experimental scores have not replaced them. <a href="audit-report.html">Read findings and tested changes →</a></p></aside>` + views[page]();
+  dashboard.innerHTML = `<aside class="card card-body" role="note"><strong>Round 1 submission · independent robustness audit</strong><p>These are the submitted rankings. An independent audit tested model refinements one at a time. A first-innings forecast repair kept both top-10 memberships unchanged. Raw pressure lift is shown in player details alongside the sample-adjusted gap. <a href="audit-report.html">Read the audit and tested changes →</a></p></aside>` + views[page]();
   if (page === "rankings") rankingTables();
   if (page === "compare") compareCards();
 }
