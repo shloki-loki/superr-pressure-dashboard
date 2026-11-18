@@ -10,8 +10,10 @@ function table(role) {
   const q = state.query.trim().toLowerCase();
   const filtered = all.filter(p => !q || p.name.toLowerCase().includes(q) || p.country.toLowerCase().includes(q));
   const shown = state.rows === "all" ? filtered : filtered.slice(0, Number(state.rows));
-  const body = shown.map(p => `<tr><td>${p.rank}</td><td><strong>${escape(p.name)}</strong><small>${escape(p.country)}</small></td><td>${p.matches}</td><td>${count(p.balls)}</td><td class="score">${p.rating.toFixed(2)}</td></tr>`).join("");
-  return `<section class="card"><div class="card-head"><h2>${labels[role]}</h2><small>${shown.length} of ${all.length} ranked</small></div>${body ? `<div class="scroll"><table aria-label="${labels[role]} rankings"><thead><tr><th scope="col">Rank</th><th scope="col">Player</th><th scope="col">Matches</th><th scope="col">Balls</th><th scope="col">Impact rating</th></tr></thead><tbody>${body}</tbody></table></div>` : '<p class="empty">No player matches your search.</p>'}</section>`;
+  const bat = role === "batters";
+  const stats = p => bat ? `<td>${count(p.runs)}</td><td>${p.sr.toFixed(1)}</td>` : `<td>${p.wkts}</td><td>${p.econ.toFixed(2)}</td>`;
+  const body = shown.map(p => `<tr><td>${p.rank}</td><td><strong>${escape(p.name)}</strong><small>${escape(p.country)}</small></td><td>${p.matches}</td><td>${count(p.balls)}</td>${stats(p)}<td>${p.impact100.toFixed(1)}</td><td class="score">${p.rating.toFixed(2)}</td></tr>`).join("");
+  return `<section class="card"><div class="card-head"><h2>${labels[role]}</h2><small>${shown.length} of ${all.length} ranked</small></div>${body ? `<div class="scroll"><table aria-label="${labels[role]} rankings"><thead><tr><th scope="col">Rank</th><th scope="col">Player</th><th scope="col">Matches</th><th scope="col">Balls</th>${bat ? '<th scope="col">Runs</th><th scope="col">Strike rate</th>' : '<th scope="col">Wickets</th><th scope="col">Economy</th>'}<th scope="col" title="Win-chance points per 100 balls, with big-match and recency weights, before the small-sample cushion">Impact /100 balls</th><th scope="col">Impact rating</th></tr></thead><tbody>${body}</tbody></table></div>` : '<p class="empty">No player matches your search.</p>'}</section>`;
 }
 
 function rankings() {
