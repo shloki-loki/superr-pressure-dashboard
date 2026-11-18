@@ -40,7 +40,7 @@ function method() {
 }
 
 function render() {
-  const page = location.hash === "#method" ? "method" : "rankings";
+  const page = "rankings"; // single page: Method tab removed
   document.querySelectorAll(".nav a").forEach(a => a.toggleAttribute("aria-current", a.getAttribute("href") === `#${page}`));
   main.innerHTML = page === "method" ? method() : rankings();
   if (page === "rankings") {
